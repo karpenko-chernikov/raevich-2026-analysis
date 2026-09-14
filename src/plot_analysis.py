@@ -20,6 +20,16 @@ FIG = ROOT / "figures"
 COMPARE = ["21.1 км Ж", "21.1 км М", "10 км", "5 км"]
 GROUP_ORDER = ["21.1 км", "10 км", "5 км"]
 
+# Понятные подписи категорий для осей (без жаргона протокола)
+RACE_LABEL = {
+    "21.1 км Ж": "Полумарафон,\nженщины",
+    "21.1 км М": "Полумарафон,\nмужчины",
+    "10 км": "10 км",
+    "5 км": "5 км",
+    "21.1 км": "Полумарафон",
+    "эстафета": "Эстафета",
+}
+
 COLORS = {
     "21.1 км Ж": "#0B6E4F",
     "21.1 км М": "#1B4332",
@@ -126,6 +136,249 @@ def save(fig: plt.Figure, name: str) -> Path:
     return path
 
 
+def plot_pace_scatter(df: pd.DataFrame) -> None:
+    """Главный интуитивный график: каждый бегун — точка, темп в мин/км."""
+    rng = np.random.default_rng(42)
+    fig, ax = plt.subplots(figsize=(12.5, 7.6))
+
+    turtle_xy = None  # самая медленная точка для стрелки «черепаха»
+    for i, race in enumerate(COMPARE):
+        g = df[df["race"] == race].copy()
+        pace = (g["pace_s_per_km"] / 60.0).astype(float)
+        y_hi = pace.quantile(0.995)
+        shown = pace[pace <= y_hi * 1.15]
+        x = i + rng.normal(0, 0.12, size=len(shown))
+        ax.scatter(
+            x,
+            shown,
+            s=16,
+            alpha=0.38,
+            color=COLORS[race],
+            edgecolors="none",
+            zorder=2,
+            label=RACE_LABEL[race].replace("\n", " "),
+        )
+        outliers = pace[pace > y_hi * 1.15]
+        if len(outliers):
+            xo = i + rng.normal(0, 0.08, size=len(outliers))
+            ax.scatter(
+                xo,
+                outliers,
+                s=42,
+                alpha=0.9,
+                color=COLORS[race],
+                edgecolors="#1C1917",
+                linewidths=0.45,
+                zorder=4,
+                marker="D",
+            )
+            # запомним самого медленного среди выбросов
+            j = int(np.argmax(outliers.to_numpy()))
+            cand = (float(xo[j]), float(outliers.iloc[j]), race)
+            if turtle_xy is None or cand[1] > turtle_xy[1]:
+                turtle_xy = cand
+
+        med = float(pace.median())
+        win = float(pace.min())
+        ax.hlines(med, i - 0.28, i + 0.28, colors=ACCENT, lw=2.2, zorder=5)
+        ax.scatter([i], [win], s=110, marker="*", color="#CA8A04", edgecolors="#1C1917", linewidths=0.5, zorder=6)
+        # стрелка к медиане — только у крайних колонок, чтобы не зашумить
+        if i in (0, 3):
+            ax.annotate(
+                f"медиана {med:.1f}",
+                xy=(i + 0.28, med),
+                xytext=(i + 0.45, med + (0.35 if i == 0 else -0.15)),
+                fontsize=8,
+                color=ACCENT,
+                va="center",
+                arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1),
+            )
+        else:
+            ax.text(i + 0.32, med, f"{med:.1f}", fontsize=7.5, color=ACCENT, va="center")
+
+        # стрелка к победителю в каждой категории
+        dy = 0.55 if i % 2 == 0 else 0.9
+        ax.annotate(
+            f"лидер {win:.1f}",
+            xy=(i, win),
+            xytext=(i - 0.15 if i else i + 0.15, win + dy),
+            fontsize=7.5,
+            color="#854D0E",
+            ha="center",
+            arrowprops=dict(arrowstyle="->", color="#854D0E", lw=1),
+        )
+
+    if turtle_xy is not None:
+        tx, ty, _race = turtle_xy
+        ax.annotate(
+            f"выброс {ty:.1f}\n(«черепаха»)",
+            xy=(tx, ty),
+            xytext=(tx - 0.85, ty - 0.35),
+            fontsize=8,
+            color="#7F1D1D",
+            ha="center",
+            arrowprops=dict(arrowstyle="->", color="#7F1D1D", lw=1.2),
+            zorder=7,
+        )
+
+    ax.set_xticks(range(len(COMPARE)))
+    ax.set_xticklabels([RACE_LABEL[r] for r in COMPARE])
+    ax.set_ylabel("Темп бегуна, минут на километр\n(меньше = быстрее; единая шкала для всех дистанций)")
+    ax.set_xlabel("Категория забега")
+    ax.set_title("Каждый финишёр — одна точка: темп (мин/км) по четырём категориям")
+    ax.grid(True, axis="y", alpha=0.45)
+    all_pace = df[df["race"].isin(COMPARE)]["pace_s_per_km"] / 60.0
+    ax.set_ylim(all_pace.min() * 0.90, min(float(all_pace.quantile(0.995)) * 1.08, float(all_pace.max()) * 1.02))
+    ax.invert_yaxis()  # быстрые сверху
+
+    handles = [
+        plt.Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            markerfacecolor=COLORS[r],
+            markersize=8,
+            label=RACE_LABEL[r].replace("\n", " "),
+        )
+        for r in COMPARE
+    ]
+    handles += [
+        plt.Line2D([0], [0], color=ACCENT, lw=2.2, label="медиана категории"),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="*",
+            color="w",
+            markerfacecolor="#CA8A04",
+            markeredgecolor="#1C1917",
+            markersize=12,
+            label="победитель (лидер)",
+        ),
+        plt.Line2D(
+            [0],
+            [0],
+            marker="D",
+            color="w",
+            markerfacecolor="#57534E",
+            markeredgecolor="#1C1917",
+            markersize=8,
+            label="сильный выброс",
+        ),
+    ]
+    ax.legend(handles=handles, frameon=False, loc="lower left", fontsize=8.5)
+
+    add_note(
+        ax,
+        "СПРАВКА\n"
+        "Ось Y — реальный темп в мин/км (не нормировка 0…1).\n"
+        "Быстрые вверху, медленные внизу. Четыре облака\n"
+        "можно сравнивать глазами на одной шкале.\n"
+        "Звезда + стрелка — лидер; черта — типичный темп;\n"
+        "ромб / «черепаха» — аномально медленный, он НЕ\n"
+        "сжимает шкалу остальных точек.",
+        "lower right",
+    )
+    save(fig, "00_pace_scatter")
+
+
+def plot_speed_scatter(df: pd.DataFrame) -> None:
+    """Тот же scatter, но в км/ч — кому привычнее скорость."""
+    rng = np.random.default_rng(7)
+    fig, ax = plt.subplots(figsize=(12, 7.2))
+
+    for i, race in enumerate(COMPARE):
+        g = df[df["race"] == race]
+        speed = 3600.0 / g["pace_s_per_km"].astype(float)  # км/ч
+        y_lo = speed.quantile(0.005)
+        shown = speed[speed >= y_lo * 0.85]
+        x = i + rng.normal(0, 0.12, size=len(shown))
+        ax.scatter(x, shown, s=14, alpha=0.35, color=COLORS[race], edgecolors="none", zorder=2)
+        outliers = speed[speed < y_lo * 0.85]
+        if len(outliers):
+            xo = i + rng.normal(0, 0.08, size=len(outliers))
+            ax.scatter(
+                xo,
+                outliers,
+                s=36,
+                alpha=0.85,
+                color=COLORS[race],
+                edgecolors="#1C1917",
+                linewidths=0.4,
+                zorder=4,
+                marker="D",
+            )
+        med = float(speed.median())
+        win = float(speed.max())
+        ax.hlines(med, i - 0.28, i + 0.28, colors=ACCENT, lw=2.2, zorder=5)
+        ax.scatter([i], [win], s=90, marker="*", color="#CA8A04", edgecolors="#1C1917", linewidths=0.5, zorder=6)
+        ax.annotate(
+            f"медиана {med:.1f}",
+            xy=(i + 0.28, med),
+            xytext=(i + 0.42, med),
+            fontsize=8,
+            color=ACCENT,
+            va="center",
+            arrowprops=dict(arrowstyle="->", color=ACCENT, lw=1),
+        )
+
+    ax.set_xticks(range(len(COMPARE)))
+    ax.set_xticklabels([RACE_LABEL[r] for r in COMPARE])
+    ax.set_ylabel("Средняя скорость бегуна, км/ч\n(больше = быстрее)")
+    ax.set_xlabel("Категория забега")
+    ax.set_title("Каждый финишёр — одна точка: скорость (км/ч) по четырём категориям")
+    ax.grid(True, axis="y", alpha=0.45)
+    all_spd = 3600.0 / df[df["race"].isin(COMPARE)]["pace_s_per_km"]
+    ax.set_ylim(max(0, all_spd.quantile(0.005) * 0.9), all_spd.max() * 1.05)
+
+    handles = [
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor=COLORS[r], markersize=8, label=RACE_LABEL[r].replace("\n", " "))
+        for r in COMPARE
+    ]
+    handles += [
+        plt.Line2D([0], [0], color=ACCENT, lw=2.2, label="медиана категории"),
+        plt.Line2D([0], [0], marker="*", color="w", markerfacecolor="#CA8A04", markeredgecolor="#1C1917", markersize=12, label="победитель"),
+    ]
+    ax.legend(handles=handles, frameon=False, loc="upper right", fontsize=8.5)
+    add_note(
+        ax,
+        "СПРАВКА\n"
+        "Та же картинка, что scatter по темпу, но в км/ч.\n"
+        "Единая шкала для всех дистанций: можно глазами\n"
+        "сравнить облака и увидеть выпадающих бегунов.\n"
+        "Скорость = 60 / темп(мин/км).",
+        "lower left",
+    )
+    save(fig, "00b_speed_scatter")
+
+
+def plot_finish_minutes_panels(df: pd.DataFrame) -> None:
+    """Абсолютные минуты финиша — по панели на дистанцию."""
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8.5), sharey=False)
+    axes = axes.ravel()
+    for ax, race in zip(axes, COMPARE):
+        minutes = df[df["race"] == race]["finish_s"] / 60.0
+        minutes = minutes[minutes <= minutes.quantile(0.99)]
+        ax.hist(minutes, bins=28, color=COLORS[race], edgecolor="white", linewidth=0.4)
+        ax.axvline(minutes.median(), color=ACCENT, lw=2, label=f"медиана {minutes.median():.0f} мин")
+        ax.axvline(minutes.min(), color="#CA8A04", lw=1.5, ls="--", label=f"победитель {minutes.min():.0f} мин")
+        ax.set_title(RACE_LABEL[race].replace("\n", " "))
+        ax.set_xlabel("Финишное время, минуты")
+        ax.set_ylabel("Число участников")
+        ax.grid(True, axis="y", alpha=0.4)
+        ax.legend(frameon=False, fontsize=8)
+    fig.suptitle("Сколько минут бежали участники (каждая дистанция — своя шкала)", y=1.01)
+    fig.text(
+        0.01,
+        -0.01,
+        "СПРАВКА: минуты нельзя сравнивать между панелями напрямую (разная длина дистанции). "
+        "Для сравнения на одной шкале смотрите scatter темпа/скорости (00, 00b).",
+        fontsize=8.2,
+        color=MUTED,
+    )
+    save(fig, "00c_finish_minutes_panels")
+
+
 def plot_cdf_minmax(df: pd.DataFrame) -> None:
     fig, ax = plt.subplots(figsize=(11, 6.5))
     for race in COMPARE:
@@ -146,11 +399,11 @@ def plot_cdf_minmax(df: pd.DataFrame) -> None:
     add_note(
         ax,
         "СПРАВКА\n"
-        "Каждое время сжимается в отрезок [0; 1] внутри своей дистанции:\n"
-        "0 — победитель, 1 — самый медленный финишёр.\n"
-        "Если кривая быстрее растёт слева — поле «спортивнее»\n"
-        "(масса у быстрых). Рост справа — много медленных.\n"
-        "Пунктир: границы 20% и 80%.",
+        "Внимание: шкала 0…1 завязана на самого медленного.\n"
+        "Одна «черепаха» среди тысячи быстрых растягивает\n"
+        "ось и меняет вид кривой. Для глаз смотрите 00/00b\n"
+        "(реальный темп). Этот график — только для сравнения\n"
+        "формы между дистанциями, с оговоркой.",
         "lower right",
     )
     save(fig, "01_cdf_minmax")
@@ -658,6 +911,10 @@ def main() -> None:
     setup_style()
     df = load()
     print("Финишёров:", len(df))
+    # Сначала интуитивные графики в реальных единицах
+    plot_pace_scatter(df)
+    plot_speed_scatter(df)
+    plot_finish_minutes_panels(df)
     plot_cdf_minmax(df)
     plot_kde_p1p99(df)
     plot_share_edges(df)
