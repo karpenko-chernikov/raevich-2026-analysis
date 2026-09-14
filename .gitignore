@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+ws_msg_*.json
+raw/
+*.parquet
+.idea/
+.vscode/
+.mplconfig/
+.mplconfig/
