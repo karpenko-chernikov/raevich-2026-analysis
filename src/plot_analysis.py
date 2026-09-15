@@ -45,16 +45,118 @@ MUTED = "#57534E"
 PANEL = "#FFFCF7"
 ACCENT = "#9A3412"
 
-# Олимпийские рекорды → средний темп, мин/км (источник: список OR World Athletics / Олимпиада)
-# Полумарафона на ОИ нет — для длинной дистанции ориентир: темп олимпийского марафона.
-OLYMPIC_PACE_MIN_PER_KM = {
-    "OR 5000 м М (Bekele, 2008)": (12 * 60 + 57.82) / 5 / 60.0,
-    "OR 5000 м Ж (Cheruiyot, 2016)": (14 * 60 + 26.17) / 5 / 60.0,
-    "OR 10 000 м М (Cheptegei, 2024)": (26 * 60 + 43.14) / 10 / 60.0,
-    "OR 10 000 м Ж (Ayana, 2016)": (29 * 60 + 17.45) / 10 / 60.0,
-    "OR марафон М (Tola, 2024)": (2 * 3600 + 6 * 60 + 26) / 42.195 / 60.0,
-    "OR марафон Ж (Hassan, 2024)": (2 * 3600 + 22 * 60 + 55) / 42.195 / 60.0,
+def _pace_min_per_km(seconds: float, distance_km: float) -> float:
+    return seconds / distance_km / 60.0
+
+
+# Ориентиры по категориям: темп в мин/км
+# Полумарафон — мировой рекорд 21.1 км; 5/10 км — олимпийский рекорд на стадионе.
+RECORDS_BY_RACE: dict[str, list[dict]] = {
+    "21.1 км М": [
+        {
+            "label": "МР полумарафон М",
+            "pace": _pace_min_per_km(57 * 60 + 31, 21.0975),  # Kiplimo, 2020
+            "color": "#1D4ED8",
+            "ls": (0, (4, 2)),
+            "label_dx": 0.0,
+            "label_side": "above",
+        }
+    ],
+    "21.1 км Ж": [
+        {
+            "label": "МР полумарафон Ж",
+            "pace": _pace_min_per_km(62 * 60 + 52, 21.0975),  # Gidey, 2021
+            "color": "#9D174D",
+            "ls": (0, (4, 2)),
+            "label_dx": 0.0,
+            "label_side": "above",
+        }
+    ],
+    "10 км": [
+        {
+            "label": "OR 10 000 м М",
+            "pace": _pace_min_per_km(26 * 60 + 43.14, 10.0),  # Cheptegei, 2024
+            "color": "#0F766E",
+            "ls": (0, (4, 2)),
+            "label_dx": -0.42,
+            "label_side": "left",
+        },
+        {
+            "label": "OR 10 000 м Ж",
+            "pace": _pace_min_per_km(29 * 60 + 17.45, 10.0),  # Ayana, 2016
+            "color": "#BE185D",
+            "ls": (0, (4, 2)),
+            "label_dx": 0.42,
+            "label_side": "right",
+        },
+    ],
+    "5 км": [
+        {
+            "label": "OR 5000 м М",
+            "pace": _pace_min_per_km(12 * 60 + 57.82, 5.0),  # Bekele, 2008
+            "color": "#0F766E",
+            "ls": (0, (4, 2)),
+            "label_dx": -0.42,
+            "label_side": "left",
+        },
+        {
+            "label": "OR 5000 м Ж",
+            "pace": _pace_min_per_km(14 * 60 + 26.17, 5.0),  # Cheruiyot, 2016
+            "color": "#BE185D",
+            "ls": (0, (4, 2)),
+            "label_dx": 0.42,
+            "label_side": "right",
+        },
+    ],
 }
+
+
+def draw_record_segment(
+    ax,
+    x_center: float,
+    y_value: float,
+    label: str,
+    color: str,
+    value_text: str,
+    ls=(0, (4, 2)),
+    half_width: float = 0.32,
+    label_dx: float = 0.0,
+    label_side: str = "above",
+) -> None:
+    """Короткий ориентир только над своей колонкой категории."""
+    ax.hlines(
+        y_value,
+        x_center - half_width,
+        x_center + half_width,
+        colors=color,
+        lw=1.9,
+        ls=ls,
+        zorder=3,
+        alpha=0.95,
+    )
+    # подпись сбоку от сегмента — чтобы М/Ж на одной колонке не наезжали
+    if label_side == "left":
+        tx, ha, va = x_center - half_width - 0.02, "right", "center"
+        text = f"{label} · {value_text}"
+    elif label_side == "right":
+        tx, ha, va = x_center + half_width + 0.02, "left", "center"
+        text = f"{label} · {value_text}"
+    else:
+        tx, ha, va = x_center + label_dx, "center", "bottom"
+        text = f"{label}\n{value_text}"
+    ax.text(
+        tx,
+        y_value,
+        text,
+        va=va,
+        ha=ha,
+        fontsize=7,
+        color=color,
+        linespacing=1.05,
+        bbox=dict(boxstyle="round,pad=0.2", facecolor="#FFFCF7", edgecolor=color, linewidth=0.8, alpha=0.95),
+        zorder=5,
+        clip_on=False,
+    )
 
 
 def setup_style() -> None:
@@ -152,26 +254,21 @@ def plot_pace_scatter(df: pd.DataFrame) -> None:
     rng = np.random.default_rng(42)
     fig, ax = plt.subplots(figsize=(12.5, 7.8))
 
-    # Олимпийские ориентиры — сплошные тонкие линии через весь график
-    or_styles = [
-        ("OR 10 000 м М (Cheptegei, 2024)", "#0F766E", (0, (4, 2))),
-        ("OR 10 000 м Ж (Ayana, 2016)", "#BE185D", (0, (4, 2))),
-        ("OR марафон М (Tola, 2024)", "#1D4ED8", (0, (1, 2))),
-        ("OR марафон Ж (Hassan, 2024)", "#9D174D", (0, (1, 2))),
-    ]
-    for label, color, ls in or_styles:
-        pace_or = OLYMPIC_PACE_MIN_PER_KM[label]
-        ax.axhline(pace_or, color=color, lw=1.2, ls=ls, zorder=1, alpha=0.85)
-        ax.text(
-            len(COMPARE) - 0.05,
-            pace_or,
-            f"  {label.split('(')[0].strip()} · {pace_or:.2f}",
-            va="center",
-            ha="left",
-            fontsize=7,
-            color=color,
-            clip_on=False,
-        )
+    record_paces: list[float] = []
+    for i, race in enumerate(COMPARE):
+        for rec in RECORDS_BY_RACE[race]:
+            draw_record_segment(
+                ax,
+                i,
+                rec["pace"],
+                rec["label"],
+                rec["color"],
+                f"{rec['pace']:.2f}",
+                rec["ls"],
+                label_dx=rec.get("label_dx", 0.0),
+                label_side=rec.get("label_side", "above"),
+            )
+            record_paces.append(rec["pace"])
 
     for i, race in enumerate(COMPARE):
         g = df[df["race"] == race].copy()
@@ -231,10 +328,10 @@ def plot_pace_scatter(df: pd.DataFrame) -> None:
     ax.set_xticklabels([RACE_LABEL[r] for r in COMPARE])
     ax.set_ylabel("Темп бегуна, минут на километр\n(меньше = быстрее; единая шкала для всех дистанций)")
     ax.set_xlabel("Категория забега")
-    ax.set_title("Каждый финишёр — одна точка: темп (мин/км) и олимпийские ориентиры")
+    ax.set_title("Каждый финишёр — одна точка: темп (мин/км) и ориентиры рекордов")
     ax.grid(True, axis="y", alpha=0.45)
     all_pace = df[df["race"].isin(COMPARE)]["pace_s_per_km"] / 60.0
-    fast_end = min(float(v) for v in OLYMPIC_PACE_MIN_PER_KM.values()) * 0.96
+    fast_end = min(record_paces) * 0.94
     slow_end = float(all_pace.quantile(0.995)) * 1.05
     ax.set_ylim(fast_end, slow_end)
     ax.invert_yaxis()
@@ -263,7 +360,7 @@ def plot_pace_scatter(df: pd.DataFrame) -> None:
             markersize=12,
             label="лидер категории",
         ),
-        plt.Line2D([0], [0], color="#0F766E", lw=1.2, ls=(0, (4, 2)), label="олимп. рекорд (темп)"),
+        plt.Line2D([0], [0], color="#0F766E", lw=1.8, ls=(0, (4, 2)), label="рекордный ориентир"),
     ]
     ax.legend(handles=handles, frameon=False, loc="lower left", fontsize=8.5)
 
@@ -274,8 +371,8 @@ def plot_pace_scatter(df: pd.DataFrame) -> None:
         "Каждая точка — один финишёр; четыре облака — четыре\n"
         "категории на одной шкале.\n"
         "Звезда — лидер категории, черта — медиана.\n"
-        "Пунктир — темп олимпийских рекордов 10 000 м\n"
-        "и марафона (ориентир для длинной дистанции).",
+        "Короткий пунктир над колонкой — рекордный темп\n"
+        "для этой дистанции (МР 21.1 км или OR 5/10 км).",
         "lower right",
     )
     save(fig, "00_pace_scatter")
@@ -286,25 +383,22 @@ def plot_speed_scatter(df: pd.DataFrame) -> None:
     rng = np.random.default_rng(7)
     fig, ax = plt.subplots(figsize=(12.5, 7.8))
 
-    or_speed = {k: 60.0 / v for k, v in OLYMPIC_PACE_MIN_PER_KM.items()}
-    for label, color, ls in [
-        ("OR 10 000 м М (Cheptegei, 2024)", "#0F766E", (0, (4, 2))),
-        ("OR 10 000 м Ж (Ayana, 2016)", "#BE185D", (0, (4, 2))),
-        ("OR марафон М (Tola, 2024)", "#1D4ED8", (0, (1, 2))),
-        ("OR марафон Ж (Hassan, 2024)", "#9D174D", (0, (1, 2))),
-    ]:
-        spd = or_speed[label]
-        ax.axhline(spd, color=color, lw=1.2, ls=ls, zorder=1, alpha=0.85)
-        ax.text(
-            len(COMPARE) - 0.05,
-            spd,
-            f"  {label.split('(')[0].strip()} · {spd:.1f} км/ч",
-            va="center",
-            ha="left",
-            fontsize=7,
-            color=color,
-            clip_on=False,
-        )
+    record_speeds: list[float] = []
+    for i, race in enumerate(COMPARE):
+        for rec in RECORDS_BY_RACE[race]:
+            spd = 60.0 / rec["pace"]
+            draw_record_segment(
+                ax,
+                i,
+                spd,
+                rec["label"],
+                rec["color"],
+                f"{spd:.1f} км/ч",
+                rec["ls"],
+                label_dx=rec.get("label_dx", 0.0),
+                label_side=rec.get("label_side", "above"),
+            )
+            record_speeds.append(spd)
 
     for i, race in enumerate(COMPARE):
         g = df[df["race"] == race]
@@ -331,10 +425,10 @@ def plot_speed_scatter(df: pd.DataFrame) -> None:
     ax.set_xticklabels([RACE_LABEL[r] for r in COMPARE])
     ax.set_ylabel("Средняя скорость бегуна, км/ч\n(больше = быстрее)")
     ax.set_xlabel("Категория забега")
-    ax.set_title("Каждый финишёр — одна точка: скорость (км/ч) и олимпийские ориентиры")
+    ax.set_title("Каждый финишёр — одна точка: скорость (км/ч) и ориентиры рекордов")
     ax.grid(True, axis="y", alpha=0.45)
     all_spd = 3600.0 / df[df["race"].isin(COMPARE)]["pace_s_per_km"]
-    ax.set_ylim(float(all_spd.quantile(0.005)) * 0.92, max(float(all_spd.max()), max(or_speed.values())) * 1.04)
+    ax.set_ylim(float(all_spd.quantile(0.005)) * 0.92, max(float(all_spd.max()), max(record_speeds)) * 1.04)
 
     handles = [
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor=COLORS[r], markersize=8, label=RACE_LABEL[r].replace("\n", " "))
@@ -343,16 +437,15 @@ def plot_speed_scatter(df: pd.DataFrame) -> None:
     handles += [
         plt.Line2D([0], [0], color=ACCENT, lw=2.2, label="медиана категории"),
         plt.Line2D([0], [0], marker="*", color="w", markerfacecolor="#CA8A04", markeredgecolor="#1C1917", markersize=12, label="лидер"),
-        plt.Line2D([0], [0], color="#0F766E", lw=1.2, ls=(0, (4, 2)), label="олимп. рекорд"),
+        plt.Line2D([0], [0], color="#0F766E", lw=1.8, ls=(0, (4, 2)), label="рекордный ориентир"),
     ]
     ax.legend(handles=handles, frameon=False, loc="upper right", fontsize=8.5)
     add_note(
         ax,
         "СПРАВКА\n"
         "Ось Y — скорость в км/ч: быстрее выше.\n"
-        "Точки — финишёры Новосибирска; пунктир — темп\n"
-        "олимпийских рекордов, переведённый в км/ч\n"
-        "(скорость = 60 / темп в мин/км).\n"
+        "Точки — финишёры; короткий пунктир над колонкой —\n"
+        "рекордный ориентир для этой дистанции в км/ч.\n"
         "Звезда — лидер категории, черта — медиана.",
         "lower left",
     )
