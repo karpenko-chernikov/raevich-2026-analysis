@@ -53,8 +53,8 @@ MPLCONFIGDIR=.mplconfig python src/plot_analysis.py
 
 | Файл | Содержание |
 |------|------------|
-| `00_pace_scatter.png` | **Главный:** scatter темпа (мин/км), 4 облака |
-| `00b_speed_scatter.png` | То же в км/ч |
+| `00_pace_scatter.png` | **Главный:** scatter темпа (мин/км) + олимпийские ориентиры |
+| `00b_speed_scatter.png` | То же в км/ч + олимпийские ориентиры |
 | `00c_finish_minutes_panels.png` | Минуты финиша, отдельная панель на дистанцию |
 | `01_cdf_minmax.png` | CDF нормированных времён (осторожно с outliers) |
 | `02_kde_p1p99.png` | Плотность без крайних 1% |
