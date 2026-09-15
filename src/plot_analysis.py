@@ -119,44 +119,66 @@ def draw_record_segment(
     color: str,
     value_text: str,
     ls=(0, (4, 2)),
-    half_width: float = 0.32,
+    half_width: float = 0.28,
     label_dx: float = 0.0,
     label_side: str = "above",
 ) -> None:
     """Короткий ориентир только над своей колонкой категории."""
-    ax.hlines(
-        y_value,
-        x_center - half_width,
-        x_center + half_width,
-        colors=color,
-        lw=1.9,
+    ax.plot(
+        [x_center - half_width, x_center + half_width],
+        [y_value, y_value],
+        color=color,
+        lw=2.0,
         ls=ls,
         zorder=3,
-        alpha=0.95,
+        solid_capstyle="butt",
     )
-    # подпись сбоку от сегмента — чтобы М/Ж на одной колонке не наезжали
+    # Короткая подпись рядом с сегментом (не на всю ширину графика)
+    short = label.replace("полумарафон ", "").replace("10 000 м ", "").replace("5000 м ", "")
+    text = f"{short} {value_text}"
     if label_side == "left":
-        tx, ha, va = x_center - half_width - 0.02, "right", "center"
-        text = f"{label} · {value_text}"
+        # выше линии на экране при invert_yaxis → меньший y
+        ax.annotate(
+            text,
+            xy=(x_center - half_width, y_value),
+            xytext=(x_center - half_width - 0.04, y_value - 0.12),
+            fontsize=6.5,
+            color=color,
+            ha="right",
+            va="bottom",
+            arrowprops=dict(arrowstyle="-", color=color, lw=0.7),
+            bbox=dict(boxstyle="round,pad=0.15", facecolor="#FFFCF7", edgecolor=color, linewidth=0.7, alpha=0.95),
+            zorder=5,
+            clip_on=False,
+        )
     elif label_side == "right":
-        tx, ha, va = x_center + half_width + 0.02, "left", "center"
-        text = f"{label} · {value_text}"
+        ax.annotate(
+            text,
+            xy=(x_center + half_width, y_value),
+            xytext=(x_center + half_width + 0.04, y_value + 0.12),
+            fontsize=6.5,
+            color=color,
+            ha="left",
+            va="top",
+            arrowprops=dict(arrowstyle="-", color=color, lw=0.7),
+            bbox=dict(boxstyle="round,pad=0.15", facecolor="#FFFCF7", edgecolor=color, linewidth=0.7, alpha=0.95),
+            zorder=5,
+            clip_on=False,
+        )
     else:
-        tx, ha, va = x_center + label_dx, "center", "bottom"
-        text = f"{label}\n{value_text}"
-    ax.text(
-        tx,
-        y_value,
-        text,
-        va=va,
-        ha=ha,
-        fontsize=7,
-        color=color,
-        linespacing=1.05,
-        bbox=dict(boxstyle="round,pad=0.2", facecolor="#FFFCF7", edgecolor=color, linewidth=0.8, alpha=0.95),
-        zorder=5,
-        clip_on=False,
-    )
+        ax.annotate(
+            text,
+            xy=(x_center, y_value),
+            xytext=(x_center, y_value - 0.22),
+            fontsize=6.5,
+            color=color,
+            ha="center",
+            va="bottom",
+            arrowprops=dict(arrowstyle="-", color=color, lw=0.7),
+            bbox=dict(boxstyle="round,pad=0.15", facecolor="#FFFCF7", edgecolor=color, linewidth=0.7, alpha=0.95),
+            zorder=5,
+            clip_on=False,
+        )
 
 
 def setup_style() -> None:
